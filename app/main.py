@@ -1,7 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
 from app.routes import events, transactions, users
+import logging
 
 Base.metadata.create_all(bind=engine)
 
@@ -20,6 +21,11 @@ app.include_router(transactions.router)
 app.include_router(users.router)
 
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
 @app.get("/")
 def root():
-    return {"message": "API is running"}
+    logger.info("Root endpoint called")
+    return Response("API is running", media_type="text/plain")

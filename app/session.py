@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import jwt
 import os
 from app.schemas import Session
+from fastapi import HTTPException
 
 EXPIRY = timedelta(days=20)
 SECRET = os.urandom(128)
@@ -17,11 +18,15 @@ def make_session(user_id):
 
 
 def load_session(jew_token):
-    decoded = jwt.decode(jew_token, SECRET, algorithms=["HS256"])
+    try:
+        decoded = jwt.decode(jew_token, SECRET, algorithms=["HS256"])
 
-    session = Session.model_validate(decoded)
+        session = Session.model_validate(decoded)
 
-    if datetime.now() > session.expires_at:
-        raise Exception(404, "session expired")
+        if datetime.now() > session.expires_at:
+            raise HTTPException(404, "session expired")
 
-    return session.user_id
+        return session.user_id
+
+    except Exception:
+        raise HTTPException(401, "Invalid token")

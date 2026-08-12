@@ -1,56 +1,30 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Response
 from app.database import SessionLocal
 from app.models import EventModel
 from app.schemas import Event, EventCreate, EventEdit
 from app.session import load_session
 from app.helpers import admin_required
-
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/admin/events")
 def admin_get_events(request: Request):
     db = SessionLocal()
 
-    admin_required(db, request)
+    admin_id = admin_required(db, request)
 
     try:
-        events = db.query(EventModel).order_by(EventModel.id.desc()).all()
+        events_db = db.query(EventModel).order_by(EventModel.id.desc()).all()
 
-        return [
-            {
-                "id": e.id,
-                "name": e.name,
-                "description": e.description,
+        logger.info("Admin %s retrieved %d events.", admin_id, len(events_db))
+        events = [Event.load_from_db(line) for line in events_db]
+        return Response(events, media_type="application/json")
 
-                "transactions": [
-                    {
-                        "id": t.id,
-                        "name": t.name,
-                        "description": t.description,
-                        "shop_name": t.shop_name,
-                        "event_id": t.event_id,
-                        "owner_id": t.owner_id,
-
-                        "participants": [
-                            u.id for u in t.participants
-                        ],
-
-                        "items": [
-                            {
-                                "id": i.id,
-                                "name": i.name,
-                                "price": i.price
-                            }
-                            for i in t.items
-                        ]
-                    }
-                    for t in e.transactions
-                ]
-            }
-            for e in events
-        ]
+    except Exception:
+        logger.exception("Failed to retrieve events. (Admin id: %s)", admin_id)
 
     finally:
         db.close()
@@ -60,7 +34,7 @@ def admin_get_events(request: Request):
 def admin_create_event(request: Request, event: EventCreate):
     db = SessionLocal()
 
-    admin_required(db, request)
+    admin_id = admin_required(db, request)
 
     try:
         new_event = EventModel(
@@ -73,7 +47,14 @@ def admin_create_event(request: Request, event: EventCreate):
         db.add(new_event)
         db.commit()
         db.refresh(new_event)
+
+        logger.info("Event %s created by Admin %d.", new_event.id, admin_id)
         return new_event
+
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to create event. (Admin id: %s)", admin_id)
+        raise
 
     finally:
         db.close()
@@ -83,13 +64,15 @@ def admin_create_event(request: Request, event: EventCreate):
 def admin_edit_event(request: Request, event_id: int, edited: EventEdit):
     db = SessionLocal()
 
-    admin_required(db, request)
+    admin_id = admin_required(db, request)
 
     try:
         event = db.query(EventModel).filter(EventModel.id == event_id).first()
 
         if not event:
-            return {"error": "event not found"}
+            logger.warning(
+                "Admin %s attempted to edit a nonexistent Event (%d).", admin_id, event_id)
+            raise HTTPException(404, "Event not found")
 
         if edited.name is not None:
             event.name = edited.name
@@ -100,7 +83,14 @@ def admin_edit_event(request: Request, event_id: int, edited: EventEdit):
         db.commit()
         db.refresh(event)
 
+        logger.info("Event %s edited by Admin %d.", event_id, admin_id)
         return event
+
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed to edit Event %s. (Admin id: %d)", event_id, admin_id)
+        raise
 
     finally:
         db.close()
@@ -110,16 +100,27 @@ def admin_edit_event(request: Request, event_id: int, edited: EventEdit):
 def admin_delete_event(request: Request, event_id: int):
     db = SessionLocal()
 
-    admin_required(db, request)
+    admin_id = admin_required(db, request)
 
     try:
         event = db.query(EventModel).filter(EventModel.id == event_id).first()
 
         if not event:
-            return {"error": "event not found"}
+            logger.warning(
+                "Admin %s attempted to delete a nonexistent Event (%d).", admin_id, event_id)
+            raise HTTPException(404, "Event not found")
 
         db.delete(event)
         db.commit()
+
+        logger.info("Event %s was deleted by Admin %d.", event_id, admin_id)
+
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed to delete Event %s. (Admin id: %d)", event_id, admin_id)
+        raise
+
     finally:
         db.close()
 
@@ -135,7 +136,14 @@ def get_my_events(request: Request):
             EventModel.owner_id == user_id).all()
         events = [Event.load_from_db(event) for event in events_db]
 
+        logger.info("User %s retrieved their Events.", user_id)
         return events
+
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to retrieve the Events of User %s.", user_id)
+        raise
+
     finally:
         db.close()
 
@@ -155,7 +163,14 @@ def create_event(request: Request, event: EventCreate):
         db.add(new_event)
         db.commit()
         db.refresh(new_event)
+
+        logger.info("User %s created a new Event: %d.", user_id, event.name)
         return new_event
+
+    except Exception:
+        db.rollback()
+        logger.exception("User %s failed to create a new Event.", user_id)
+        raise
 
     finally:
         db.close()
@@ -174,7 +189,9 @@ def edit_event(request: Request, event_id: int, edited: EventEdit):
             EventModel.id == event_id, EventModel.owner_id == user_id).first()
 
         if not event:
-            return {"error": "event not found"}
+            logger.warning(
+                "User %s attempted to edit a nonexistent Event %d.", user_id, event_id)
+            raise HTTPException(404, "Event not found")
 
         if edited.name is not None:
             event.name = edited.name
@@ -185,7 +202,13 @@ def edit_event(request: Request, event_id: int, edited: EventEdit):
         db.commit()
         db.refresh(event)
 
+        logger.info("User %s edited Event %d.", user_id, event_id)
         return event
+
+    except Exception:
+        db.rollback()
+        logger.exception("User %s failed to edit Event %d.", user_id, event_id)
+        raise
 
     finally:
         db.close()
@@ -204,9 +227,20 @@ def delete_event(request: Request, event_id: int):
             EventModel.id == event_id, EventModel.owner_id == user_id).first()
 
         if not event:
-            return {"error": "event not found"}
+            logger.warning(
+                "User %s attempted to delete a nonexistent Event %d.", user_id, event_id)
+            raise HTTPException(404, "Event not found")
 
         db.delete(event)
         db.commit()
+
+        logger.info("User %s deleted Event %d.", user_id, event_id)
+
+    except Exception:
+        db.rollback()
+        logger.exception("User %s failed to delete Event %d.",
+                         user_id, event_id)
+        raise
+
     finally:
         db.close()
