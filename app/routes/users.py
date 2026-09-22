@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Request, HTTPException
+import logging
+
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+
 from app.database import SessionLocal
+from app.helpers import admin_required
 from app.models import UserModel
 from app.schemas import User, UserCreate, UserEdit, UserLogin
 from app.session import load_session, make_session
-from app.helpers import admin_required
-import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -37,10 +39,7 @@ def admin_create_user(request: Request, user: UserCreate):
     admin_id = admin_required(db, request)
 
     try:
-        new_user = UserModel(
-            name=user.name,
-            account_number=user.account_number
-        )
+        new_user = UserModel(name=user.name, account_number=user.account_number)
 
         db.add(new_user)
         db.commit()
@@ -69,7 +68,8 @@ def admin_edit_user(request: Request, user_id: int, edited: UserEdit):
 
         if not user:
             logger.warning(
-                "Admin %s attempted to edit a nonexistent user (%d).", admin_id, user_id)
+                "Admin %s attempted to edit a nonexistent user (%d).", admin_id, user_id
+            )
             raise HTTPException(404, "User not found")
 
         if edited.name is not None:
@@ -86,8 +86,7 @@ def admin_edit_user(request: Request, user_id: int, edited: UserEdit):
 
     except Exception:
         db.rollback()
-        logger.exception(
-            "Failed to edit user %s. (Admin id: %d)", user_id, admin_id)
+        logger.exception("Failed to edit user %s. (Admin id: %d)", user_id, admin_id)
         raise
 
     finally:
@@ -105,7 +104,10 @@ def admin_delete_user(request: Request, user_id: int):
 
         if not user:
             logger.warning(
-                "Admin %s attempted to delete a nonexistent user (%d).", admin_id, user_id)
+                "Admin %s attempted to delete a nonexistent user (%d).",
+                admin_id,
+                user_id,
+            )
             raise HTTPException(404, "User not found")
 
         db.delete(user)
@@ -115,8 +117,7 @@ def admin_delete_user(request: Request, user_id: int):
 
     except Exception:
         db.rollback()
-        logger.exception(
-            "Failed to delete user %s. (Admin id: %d)", user_id, admin_id)
+        logger.exception("Failed to delete user %s. (Admin id: %d)", user_id, admin_id)
         raise
 
     finally:
@@ -161,10 +162,11 @@ def login(me: UserLogin):
     db = SessionLocal()
 
     try:
-        user_db = db.query(UserModel).filter(
-            UserModel.name == me.name,
-            UserModel.pin_code == me.pin_code
-        ).first()
+        user_db = (
+            db.query(UserModel)
+            .filter(UserModel.name == me.name, UserModel.pin_code == me.pin_code)
+            .first()
+        )
 
         if user_db is None:
             logger.warning("Failed login attempt for username='%s'.", me.name)
@@ -250,8 +252,7 @@ def edit_me(request: Request, edited: UserEdit):
 
         if edited.pin_code:
             if not (edited.pin_code.isnumeric() and len(edited.pin_code) == 4):
-                raise HTTPException(
-                    status_code=400, detail="pin code wrong format")
+                raise HTTPException(status_code=400, detail="pin code wrong format")
 
             user_db.pin_code = edited.pin_code
 

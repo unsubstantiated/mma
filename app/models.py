@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, Float, String, ForeignKey, Table
+from sqlalchemy import Column, Float, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import relationship
+
 from app.database import Base
 
 transaction_participants = Table(
@@ -45,8 +46,7 @@ class ItemModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     price = Column(Float, nullable=False)
-    parent_transaction_id = relationship(
-        "TransactionModel", back_populates="items")
+    parent_transaction_id = relationship("TransactionModel", back_populates="items")
 
 
 class EventModel(Base):

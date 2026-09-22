@@ -1,17 +1,19 @@
-from datetime import datetime, timedelta
-import jwt
 import os
-from app.schemas import Session
+from datetime import datetime, timedelta
+
+import jwt
 from fastapi import HTTPException
+
+from app.schemas import Session
 
 EXPIRY = timedelta(days=20)
 SECRET = os.urandom(128)
 
 
 def make_session(user_id):
-    session = Session(user_id=user_id, created_at=datetime.now(),
-                      expires_at=datetime.now()+EXPIRY
-                      )
+    session = Session(
+        user_id=user_id, created_at=datetime.now(), expires_at=datetime.now() + EXPIRY
+    )
     jew_token = jwt.encode(session.model_dump(), SECRET, algorithm="HS256")
 
     return jew_token
