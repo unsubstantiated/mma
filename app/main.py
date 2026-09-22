@@ -1,7 +1,9 @@
 import logging
+import os
 
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.database import Base, engine
 from app.routes import events, transactions, users
@@ -16,6 +18,10 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.urandom(22),
 )
 
 app.include_router(events.router)

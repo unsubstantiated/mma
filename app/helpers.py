@@ -24,7 +24,7 @@ def admin_required(db, request: Request):
 
     role = db.query(UserModel.role).filter(UserModel.id == is_admin_id).scalar()
 
-    if role != "admin":
+    if role != "jew":
         logger.warning("Access denied: user %s is not an admin.", is_admin_id)
         raise HTTPException(status_code=403, detail="Admin access required")
 

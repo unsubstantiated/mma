@@ -133,7 +133,7 @@ def register(me: UserCreate):
     db = SessionLocal()
     try:
         user_db = UserModel(
-            name=me.name, account_number=me.account_number, pin_code=me.pin_code
+            name=me.name, account_number=me.account_number, pin_code=me.pin_code, role="member"
         )
 
         db.add(user_db)
