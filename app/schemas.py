@@ -40,6 +40,7 @@ class ItemEdit(BaseModel):
 class EventCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    owner_id: int
 
 
 class EventEdit(BaseModel):
@@ -68,7 +69,7 @@ class User(BaseModel):
     id: int
     name: str
     account_number: str
-    role: Literal["slave", "woman", "member", "jew"]
+    role: Literal["slave", "woman", "member", "jew"] = "member"
 
     pin_code: str
 

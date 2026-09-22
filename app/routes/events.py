@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Request, HTTPException, Response
+from fastapi import APIRouter, Request, HTTPException
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from app.database import SessionLocal
 from app.models import EventModel
 from app.schemas import Event, EventCreate, EventEdit
@@ -21,7 +23,7 @@ def admin_get_events(request: Request):
 
         logger.info("Admin %s retrieved %d events.", admin_id, len(events_db))
         events = [Event.load_from_db(line) for line in events_db]
-        return Response(events, media_type="application/json")
+        return JSONResponse(content=jsonable_encoder(events))
 
     except Exception:
         logger.exception("Failed to retrieve events. (Admin id: %s)", admin_id)

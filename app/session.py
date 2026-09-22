@@ -12,7 +12,8 @@ def make_session(user_id):
     session = Session(user_id=user_id, created_at=datetime.now(),
                       expires_at=datetime.now()+EXPIRY
                       )
-    jew_token = jwt.encode(session.model_dump(), SECRET, algorithm="HS256")
+    jew_token = jwt.encode(session.model_dump(
+        mode="json"), SECRET, algorithm="HS256")
 
     return jew_token
 
