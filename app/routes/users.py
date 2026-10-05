@@ -1,21 +1,31 @@
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
+from app.database import get_db
 from app.helpers import admin_required
 from app.models import UserModel
-from app.schemas import User, UserCreate, UserEdit, UserLogin
+from app.schemas import (
+    AdminUserCreate,
+    AdminUserEdit,
+    User,
+    UserCreate,
+    UserEdit,
+    UserLogin,
+)
 from app.session import load_session, make_session
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+DbSession = Annotated[Session, Depends(get_db)]
+
 
 @router.get("/admin/users")
-def admin_get_all_users(request: Request):
-    db = SessionLocal()
+def admin_get_all_users(request: Request, db: DbSession):
 
     admin_id = admin_required(db, request)
     try:
@@ -33,13 +43,20 @@ def admin_get_all_users(request: Request):
 
 
 @router.post("/admin/users")
-def admin_create_user(request: Request, user: UserCreate):
-    db = SessionLocal()
+def admin_create_user(request: Request, user: AdminUserCreate, db: DbSession):
 
     admin_id = admin_required(db, request)
 
+    if db.query(UserModel).filter(UserModel.name == user.name).first():
+        raise HTTPException(409, "A user with this name already exists.")
+
     try:
-        new_user = UserModel(name=user.name, account_number=user.account_number)
+        new_user = UserModel(
+            name=user.name,
+            account_number=user.account_number,
+            role=user.role,
+            pin_code=user.pin_code,
+        )
 
         db.add(new_user)
         db.commit()
@@ -58,8 +75,9 @@ def admin_create_user(request: Request, user: UserCreate):
 
 
 @router.put("/admin/users/{user_id}")
-def admin_edit_user(request: Request, user_id: int, edited: UserEdit):
-    db = SessionLocal()
+def admin_edit_user(
+    request: Request, user_id: int, edited: AdminUserEdit, db: DbSession
+):
 
     admin_id = admin_required(db, request)
 
@@ -78,6 +96,12 @@ def admin_edit_user(request: Request, user_id: int, edited: UserEdit):
         if edited.account_number is not None:
             user.account_number = edited.account_number
 
+        if edited.role is not None:
+            user.role = edited.role
+
+        if edited.pin_code is not None:
+            user.pin_code = edited.pin_code
+
         db.commit()
         db.refresh(user)
 
@@ -94,8 +118,7 @@ def admin_edit_user(request: Request, user_id: int, edited: UserEdit):
 
 
 @router.delete("/admin/users/{user_id}")
-def admin_delete_user(request: Request, user_id: int):
-    db = SessionLocal()
+def admin_delete_user(request: Request, user_id: int, db: DbSession):
 
     admin_id = admin_required(db, request)
 
@@ -125,15 +148,20 @@ def admin_delete_user(request: Request, user_id: int):
 
 
 @router.post("/register")
-def register(me: UserCreate):
+def register(me: UserCreate, db: DbSession):
 
     if not (me.pin_code.isnumeric() and len(me.pin_code) == 4):
         raise HTTPException(status_code=400, detail="pin code wrong format")
 
-    db = SessionLocal()
+    if db.query(UserModel).filter(UserModel.name == me.name).first():
+        raise HTTPException(409, "A user with this name already exists.")
+
     try:
         user_db = UserModel(
-            name=me.name, account_number=me.account_number, pin_code=me.pin_code, role="member"
+            name=me.name,
+            account_number=me.account_number,
+            pin_code=me.pin_code,
+            role="member",
         )
 
         db.add(user_db)
@@ -154,12 +182,10 @@ def register(me: UserCreate):
 
 
 @router.post("/login")
-def login(me: UserLogin):
+def login(me: UserLogin, db: DbSession):
 
     if not (me.pin_code.isnumeric() and len(me.pin_code) == 4):
         raise HTTPException(status_code=400, detail="pin code wrong format")
-
-    db = SessionLocal()
 
     try:
         user_db = (
@@ -192,11 +218,10 @@ def login(me: UserLogin):
 
 
 @router.get("/me")
-def get_me(request: Request):
+def get_me(request: Request, db: DbSession):
     jew_token = request.cookies.get("Session")
     user_id = load_session(jew_token)
 
-    db = SessionLocal()
     try:
         user_db = db.query(UserModel).filter(UserModel.id == user_id).first()
         user = User.load_from_db(user_db)
@@ -213,11 +238,10 @@ def get_me(request: Request):
 
 
 @router.delete("/me")
-def delete_me(request: Request):
+def delete_me(request: Request, db: DbSession):
     jew_token = request.cookies.get("Session")
     user_id = load_session(jew_token)
 
-    db = SessionLocal()
     try:
         user_db = db.query(UserModel).filter(UserModel.id == user_id).first()
 
@@ -236,11 +260,10 @@ def delete_me(request: Request):
 
 
 @router.put("/me")
-def edit_me(request: Request, edited: UserEdit):
+def edit_me(request: Request, edited: UserEdit, db: DbSession):
     jew_token = request.cookies.get("Session")
     user_id = load_session(jew_token)
 
-    db = SessionLocal()
     try:
         user_db = db.query(UserModel).filter(UserModel.id == user_id).first()
 

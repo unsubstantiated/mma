@@ -24,6 +24,20 @@ class UserEdit(BaseModel):
     pin_code: str | None = None
 
 
+class AdminUserCreate(BaseModel):
+    name: str
+    account_number: str | None = None
+    pin_code: str | None = None
+    role: Literal["slave", "woman", "member", "jew"] = "member"
+
+
+class AdminUserEdit(BaseModel):
+    name: str | None = None
+    account_number: str | None = None
+    pin_code: str | None = None
+    role: Literal["slave", "woman", "member", "jew"] = "member"
+
+
 class UserLogin(BaseModel):
     name: str
     pin_code: str
@@ -41,13 +55,28 @@ class ItemEdit(BaseModel):
 
 class EventCreate(BaseModel):
     name: str
-    description: Optional[str] = None
-    owner_id: int
+    description: str | None = None
+    participants: list[int]
 
 
 class EventEdit(BaseModel):
     name: str | None = None
     description: str | None = None
+    participants: list[int]
+
+
+class AdminEventCreate(BaseModel):
+    event_name: str
+    event_description: str | None = None
+    owner_id: int
+    participants: list[int]
+
+
+class AdminEventEdit(BaseModel):
+    event_name: str | None
+    event_description: str | None
+    event_id: int
+    participants: list[int] | None
 
 
 class TransactionAdd(BaseModel):
@@ -65,6 +94,7 @@ class TransactionEdit(BaseModel):
     description: str | None = None
     shop_name: str | None = None
     participants: list[int] | None = None
+    items: list[ItemEdit] | None = None
 
 
 class User(BaseModel):
@@ -114,8 +144,8 @@ class Transaction(BaseModel):
             description=line.description,
             shop_name=line.shop_name,
             owner_id=line.owner_id,
-            participants=line.participants,
-            items=line.items,
+            participants=[User.load_from_db(user) for user in line.participants],
+            items=[Item.load_from_db(item) for item in line.items],
         )
 
 
@@ -132,6 +162,9 @@ class Event(BaseModel):
             id=line.id,
             name=line.name,
             description=line.description,
-            transactions=line.transactions,
+            transactions=[
+                Transaction.load_from_db(transaction)
+                for transaction in line.transactions
+            ],
             owner_id=line.owner_id,
         )

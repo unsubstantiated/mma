@@ -1,8 +1,10 @@
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
+from app.database import get_db
 from app.helpers import admin_required
 from app.models import ItemModel, TransactionModel, UserModel
 from app.schemas import Transaction, TransactionAdd, TransactionEdit
@@ -11,10 +13,11 @@ from app.session import load_session
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+DbSession = Annotated[Session, Depends(get_db)]
+
 
 @router.get("/admin/transactions")
-def admin_get_all_transactions(request: Request):
-    db = SessionLocal()
+def admin_get_all_transactions(request: Request, db: DbSession):
 
     admin_id = admin_required(db, request)
 
@@ -27,7 +30,7 @@ def admin_get_all_transactions(request: Request):
         )
         transactions = [Transaction.load_from_db(line) for line in transactions_db]
 
-        return Response(transactions, media_type="application/json")
+        return transactions
 
     except Exception:
         logger.exception("Failed to retrieve transactions. (Admin id: %s)", admin_id)
@@ -38,8 +41,9 @@ def admin_get_all_transactions(request: Request):
 
 
 @router.post("/admin/transactions")
-def admin_create_transaction(request: Request, transaction: TransactionAdd):
-    db = SessionLocal()
+def admin_create_transaction(
+    request: Request, transaction: TransactionAdd, db: DbSession
+):
 
     admin_id = admin_required(db, request)
 
@@ -65,7 +69,7 @@ def admin_create_transaction(request: Request, transaction: TransactionAdd):
         logger.info(
             "New Transaction %s created by Admin %d.", new_transaction.id, admin_id
         )
-        return Response(new_transaction, media_type="application/json")
+        return new_transaction
 
     except Exception:
         db.rollback()
@@ -78,9 +82,8 @@ def admin_create_transaction(request: Request, transaction: TransactionAdd):
 
 @router.put("/admin/transactions/{transaction_id}")
 def admin_edit_transaction(
-    request: Request, transaction_id: int, edited: TransactionEdit
+    request: Request, transaction_id: int, edited: TransactionEdit, db: DbSession
 ):
-    db = SessionLocal()
 
     admin_id = admin_required(db, request)
 
@@ -122,7 +125,7 @@ def admin_edit_transaction(
         db.refresh(transaction)
 
         logger.info("Transaction %s edited by Admin %d", transaction_id, admin_id)
-        return Response(transaction, media_type="application/json")
+        return transaction
 
     except Exception:
         db.rollback()
@@ -136,8 +139,7 @@ def admin_edit_transaction(
 
 
 @router.delete("/admin/transactions/{transaction_id}")
-def admin_delete_transaction(request: Request, transaction_id: int):
-    db = SessionLocal()
+def admin_delete_transaction(request: Request, transaction_id: int, db: DbSession):
 
     admin_id = admin_required(db, request)
 
@@ -172,10 +174,9 @@ def admin_delete_transaction(request: Request, transaction_id: int):
 
 
 @router.get("/transactions")
-def get_my_transactions(request: Request):
-    db = SessionLocal()
+def get_my_transactions(request: Request, db: DbSession):
 
-    jew_token = request.session.get("Session")
+    jew_token = request.cookies.get("Session")
     user_id = load_session(jew_token)
 
     try:
@@ -199,10 +200,9 @@ def get_my_transactions(request: Request):
 
 
 @router.post("/transactions")
-def create_transaction(request: Request, transaction: TransactionAdd):
-    db = SessionLocal()
+def create_transaction(request: Request, transaction: TransactionAdd, db: DbSession):
 
-    jew_token = request.session.get("Session")
+    jew_token = request.cookies.get("Session")
     user_id = load_session(jew_token)
 
     try:
@@ -241,10 +241,11 @@ def create_transaction(request: Request, transaction: TransactionAdd):
 
 
 @router.put("/transactions/{transaction_id}")
-def edit_transaction(request: Request, transaction_id: int, edited: TransactionEdit):
-    db = SessionLocal()
+def edit_transaction(
+    request: Request, transaction_id: int, edited: TransactionEdit, db: DbSession
+):
 
-    jew_token = request.session.get("Session")
+    jew_token = request.cookies.get("Session")
     user_id = load_session(jew_token)
 
     try:
@@ -301,11 +302,10 @@ def edit_transaction(request: Request, transaction_id: int, edited: TransactionE
         db.close()
 
 
-@router.delete("/admin/transactions/{transaction_id}")
-def delete_transaction(request: Request, transaction_id: int):
-    db = SessionLocal()
+@router.delete("/transactions/{transaction_id}")
+def delete_transaction(request: Request, transaction_id: int, db: DbSession):
 
-    jew_token = request.session.get("Session")
+    jew_token = request.cookies.get("Session")
     user_id = load_session(jew_token)
 
     try:

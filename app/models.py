@@ -10,6 +10,13 @@ transaction_participants = Table(
     Column("user_id", ForeignKey("users.id"), primary_key=True),
 )
 
+event_participants = Table(
+    "event_participants",
+    Base.metadata,
+    Column("event_id", ForeignKey("events.id"), primary_key=True),
+    Column("user_id", ForeignKey("users.id"), primary_key=True),
+)
+
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -59,3 +66,7 @@ class EventModel(Base):
 
     transactions = relationship("TransactionModel")
     owner_id = Column(Integer, ForeignKey("users.id"))
+    participants = relationship(
+        "UserModel",
+        secondary=event_participants,
+    )
