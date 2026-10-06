@@ -38,4 +38,4 @@ def root():
     logger.info("Root endpoint called")
     return Response("API is running", media_type="text/plain")
 
-#
+# sg else
