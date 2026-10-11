@@ -148,8 +148,8 @@ def admin_delete_event(request: Request, event_id: int, db: DbSession):
 
 @router.get("/events")
 def get_my_events(request: Request, db: DbSession):
-    jew_token = request.cookies.get("Session")
-    user_id = load_session(jew_token)
+    jw_token = request.cookies.get("Session")
+    user_id = load_session(jw_token)
 
     try:
         events_db = db.query(EventModel).filter(EventModel.owner_id == user_id).all()
@@ -169,8 +169,8 @@ def get_my_events(request: Request, db: DbSession):
 
 @router.post("/events")
 def create_event(request: Request, event: EventCreate, db: DbSession):
-    jew_token = request.cookies.get("Session")
-    user_id = load_session(jew_token)
+    jw_token = request.cookies.get("Session")
+    user_id = load_session(jw_token)
 
     try:
         participants = (
@@ -202,8 +202,8 @@ def create_event(request: Request, event: EventCreate, db: DbSession):
 @router.put("/events/{event_id}")
 def edit_event(request: Request, event_id: int, edited: EventEdit, db: DbSession):
 
-    jew_token = request.cookies.get("Session")
-    user_id = load_session(jew_token)
+    jw_token = request.cookies.get("Session")
+    user_id = load_session(jw_token)
 
     try:
         event = (
@@ -247,8 +247,8 @@ def edit_event(request: Request, event_id: int, edited: EventEdit, db: DbSession
 @router.delete("/events/{event_id}")
 def delete_event(request: Request, event_id: int, db: DbSession):
 
-    jew_token = request.cookies.get("Session")
-    user_id = load_session(jew_token)
+    jw_token = request.cookies.get("Session")
+    user_id = load_session(jw_token)
 
     try:
         event = (

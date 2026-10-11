@@ -176,8 +176,8 @@ def admin_delete_transaction(request: Request, transaction_id: int, db: DbSessio
 @router.get("/transactions")
 def get_my_transactions(request: Request, db: DbSession):
 
-    jew_token = request.cookies.get("Session")
-    user_id = load_session(jew_token)
+    jw_token = request.cookies.get("Session")
+    user_id = load_session(jw_token)
 
     try:
         transactions_db = (
@@ -202,8 +202,8 @@ def get_my_transactions(request: Request, db: DbSession):
 @router.post("/transactions")
 def create_transaction(request: Request, transaction: TransactionAdd, db: DbSession):
 
-    jew_token = request.cookies.get("Session")
-    user_id = load_session(jew_token)
+    jw_token = request.cookies.get("Session")
+    user_id = load_session(jw_token)
 
     try:
         participants = (
@@ -245,8 +245,8 @@ def edit_transaction(
     request: Request, transaction_id: int, edited: TransactionEdit, db: DbSession
 ):
 
-    jew_token = request.cookies.get("Session")
-    user_id = load_session(jew_token)
+    jw_token = request.cookies.get("Session")
+    user_id = load_session(jw_token)
 
     try:
         transaction = (
@@ -305,8 +305,8 @@ def edit_transaction(
 @router.delete("/transactions/{transaction_id}")
 def delete_transaction(request: Request, transaction_id: int, db: DbSession):
 
-    jew_token = request.cookies.get("Session")
-    user_id = load_session(jew_token)
+    jw_token = request.cookies.get("Session")
+    user_id = load_session(jw_token)
 
     try:
         transaction = (

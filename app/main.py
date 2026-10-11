@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.database import Base, engine
-from app.routes import events, transactions, users
+from app.routes import events, settlements, transactions, users
 
 Base.metadata.create_all(bind=engine)
 
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(events.router)
 app.include_router(transactions.router)
 app.include_router(users.router)
+app.include_router(settlements.router)
 
 
 logging.basicConfig(level=logging.INFO)
@@ -37,5 +38,6 @@ logger = logging.getLogger(__name__)
 def root():
     logger.info("Root endpoint called")
     return Response("API is running", media_type="text/plain")
+
 
 # tests

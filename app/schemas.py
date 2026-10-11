@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models import EventModel, ItemModel, TransactionModel, UserModel
 
@@ -28,14 +28,14 @@ class AdminUserCreate(BaseModel):
     name: str
     account_number: str | None = None
     pin_code: str | None = None
-    role: Literal["slave", "woman", "member", "jew"] = "member"
+    role: Literal["member", "admin"] = "member"
 
 
 class AdminUserEdit(BaseModel):
     name: str | None = None
     account_number: str | None = None
     pin_code: str | None = None
-    role: Literal["slave", "woman", "member", "jew"] = "member"
+    role: Literal["member", "admin"] = "member"
 
 
 class UserLogin(BaseModel):
@@ -101,7 +101,7 @@ class User(BaseModel):
     id: int
     name: str
     account_number: str
-    role: Literal["slave", "woman", "member", "jew"] = "member"
+    role: Literal["member", "admin"] = "member"
 
     pin_code: str
 
@@ -168,3 +168,20 @@ class Event(BaseModel):
             ],
             owner_id=line.owner_id,
         )
+
+
+class UserBalance(BaseModel):
+    user_id: int
+    balance_minor: int
+
+
+class SettlementSuggestion(BaseModel):
+    from_user_id: int
+    to_user_id: int
+    amount_minor: int = Field(gt=0)
+
+
+class EventSettlements(BaseModel):
+    event_id: int
+    balances: list[UserBalance]
+    settlements: list[SettlementSuggestion]

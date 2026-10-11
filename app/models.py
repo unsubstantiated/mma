@@ -1,5 +1,16 @@
-from sqlalchemy import Column, Float, ForeignKey, Integer, String, Table
-from sqlalchemy.orm import relationship
+from datetime import UTC, datetime
+
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Table,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -21,52 +32,127 @@ event_participants = Table(
 class UserModel(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    account_number = Column(String)
-    role = Column(String)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    account_number: Mapped[str | None] = mapped_column(String, nullable=True)
+    role: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    pin_code = Column(String, nullable=False)
+    pin_code: Mapped[str] = mapped_column(String, nullable=False)
 
 
 class TransactionModel(Base):
     __tablename__ = "transactions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    description = Column(String)
-    shop_name = Column(String, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    shop_name: Mapped[str] = mapped_column(String, nullable=False)
 
-    owner_id = Column(Integer, ForeignKey("users.id"))
-    event_id = Column(Integer, ForeignKey("events.id"))
-
-    participants = relationship(
-        "UserModel",
-        secondary=transaction_participants,
+    owner_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("events.id"),
+        nullable=True,
+    )
+    event: Mapped["EventModel | None"] = relationship(
+        back_populates="transactions",
     )
 
-    items = relationship("ItemModel")
+    participants: Mapped[list["UserModel"]] = relationship(
+        secondary=transaction_participants,
+    )
+    items: Mapped[list["ItemModel"]] = relationship(
+        back_populates="parent_transaction",
+    )
 
 
 class ItemModel(Base):
     __tablename__ = "items"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    price = Column(Float, nullable=False)
-    parent_transaction_id = Column(Integer, ForeignKey("transactions.id"))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    price: Mapped[float] = mapped_column(Float, nullable=False)
+
+    parent_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("transactions.id"),
+        nullable=True,
+    )
+
+    parent_transaction: Mapped["TransactionModel"] = relationship(
+        back_populates="items",
+    )
 
 
 class EventModel(Base):
     __tablename__ = "events"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    description = Column(String)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    transactions = relationship("TransactionModel")
-    owner_id = Column(Integer, ForeignKey("users.id"))
-    participants = relationship(
-        "UserModel",
+    owner_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+
+    transactions: Mapped[list["TransactionModel"]] = relationship(
+        back_populates="event",
+    )
+    participants: Mapped[list["UserModel"]] = relationship(
         secondary=event_participants,
+    )
+
+
+class SettlementModel(Base):
+    __tablename__ = "settlements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("events.id"),
+        nullable=False,
+    )
+    debtor_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=False,
+    )
+    creditor_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=False,
+    )
+
+    amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="pending",
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "debtor_id != creditor_id",
+            name="different_settlement_users",
+        ),
+        CheckConstraint(
+            "amount_minor > 0",
+            name="positive_settlement_amount",
+        ),
     )
