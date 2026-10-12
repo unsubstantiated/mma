@@ -116,6 +116,15 @@ class User(BaseModel):
         )
 
 
+class UserPublic(BaseModel):
+    id: int
+    name: str
+
+    @classmethod
+    def load_from_db(cls, line: UserModel):
+        return cls(id=line.id, name=line.name)
+
+
 class Item(BaseModel):
     id: int
     name: str
@@ -155,6 +164,7 @@ class Event(BaseModel):
     description: str
     transactions: list[Transaction]
     owner_id: int
+    participants: list[UserPublic]
 
     @classmethod
     def load_from_db(cls, line: EventModel):
@@ -167,6 +177,7 @@ class Event(BaseModel):
                 for transaction in line.transactions
             ],
             owner_id=line.owner_id,
+            participants=[UserPublic.load_from_db(user) for user in line.participants],
         )
 
 
