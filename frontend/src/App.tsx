@@ -32,14 +32,21 @@ interface Event {
     name: string;
     description?: string;
     owner_id: number;
+    participants: { id: number; name: string }[];
     transactions: Transaction[];
+}
+
+interface EventSettlements {
+    event_id: number;
+    balances: { user_id: number; balance_minor: number }[];
+    settlements: { from_user_id: number; to_user_id: number; amount_minor: number }[];
 }
 
 type View = "login" | "register" | "events" | "transactions" | "balances";
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 
-const BASE = "http://localhost:8000";
+const BASE = "/api";
 
 async function api<T>(
     path: string,
@@ -52,9 +59,12 @@ async function api<T>(
     });
     if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: "Unknown error" }));
-        throw new Error(err.detail ?? "Request failed");
+        const d = err.detail;
+        throw new Error(
+            typeof d === "string" ? d : Array.isArray(d) ? d.map((x) => x.msg).join(", ") : "Request failed"
+        );
     }
-    return res.json();
+    return res.json().catch(() => null) as Promise<T>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -66,26 +76,6 @@ function totalOf(t: Transaction) {
 function perPersonOf(t: Transaction) {
     const n = t.participants.length;
     return n > 0 ? totalOf(t) / n : totalOf(t);
-}
-
-/** Who owes whom, simplified */
-function computeBalances(transactions: Transaction[], users: User[]) {
-    const net: Record<number, number> = {};
-    users.forEach((u) => (net[u.id] = 0));
-
-    for (const t of transactions) {
-        const total = totalOf(t);
-        const n = t.participants.length;
-        if (n === 0) continue;
-        const share = total / n;
-        // payer (owner) is owed the total
-        net[t.owner_id] = (net[t.owner_id] ?? 0) + total;
-        // each participant owes their share
-        for (const p of t.participants) {
-            net[p.id] = (net[p.id] ?? 0) - share;
-        }
-    }
-    return net;
 }
 
 function userName(id: number, users: User[]) {
@@ -238,9 +228,14 @@ function RegisterForm({ onSuccess, goLogin }: { onSuccess: (u: User) => void; go
         setErr("");
         setLoading(true);
         try {
-            const user = await api<User>("/register", {
+            await api<User>("/register", {
                 method: "POST",
                 body: JSON.stringify({ name, pin_code: pin, account_number: account }),
+            });
+            // /register does not start a session, so log in right away
+            const user = await api<User>("/login", {
+                method: "POST",
+                body: JSON.stringify({ name, pin_code: pin }),
             });
             onSuccess(user);
         } catch (e: any) {
@@ -274,19 +269,56 @@ function RegisterForm({ onSuccess, goLogin }: { onSuccess: (u: User) => void; go
     );
 }
 
+function ParticipantPicker({
+    users, selected, onToggle, meId,
+}: { users: { id: number; name: string }[]; selected: number[]; onToggle: (id: number) => void; meId: number }) {
+    return (
+        <div>
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-2">Participants</span>
+            <div className="flex flex-wrap gap-2">
+                {users.map(u => (
+                    <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => onToggle(u.id)}
+                        className={`px-3 py-1.5 rounded-full text-sm border transition-all ${selected.includes(u.id)
+                            ? "bg-indigo-600 text-white border-indigo-600"
+                            : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300"
+                            }`}
+                    >
+                        {u.name}{u.id === meId && " (you)"}
+                    </button>
+                ))}
+            </div>
+            {selected.length === 0 && (
+                <p className="text-xs text-red-500 mt-1">Select at least one participant.</p>
+            )}
+        </div>
+    );
+}
+
 // ─── Event forms ──────────────────────────────────────────────────────────────
 
 function EventFormModal({
     initial,
+    allUsers,
+    meId,
     onSave,
     onClose,
 }: {
     initial?: Event;
-    onSave: (name: string, description: string) => Promise<void>;
+    allUsers: User[];
+    meId: number;
+    onSave: (name: string, description: string, participants: number[]) => Promise<void>;
     onClose: () => void;
 }) {
     const [name, setName] = useState(initial?.name ?? "");
     const [desc, setDesc] = useState(initial?.description ?? "");
+    const [participants, setParticipants] = useState<number[]>(
+        initial ? initial.participants.map(p => p.id) : [meId]
+    );
+    const toggle = (id: number) =>
+        setParticipants(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState("");
 
@@ -295,7 +327,7 @@ function EventFormModal({
         setErr("");
         setLoading(true);
         try {
-            await onSave(name, desc);
+            await onSave(name, desc, participants);
             onClose();
         } catch (e: any) {
             setErr(e.message);
@@ -319,9 +351,10 @@ function EventFormModal({
                         placeholder="Optional notes…"
                     />
                 </label>
+                <ParticipantPicker users={allUsers} selected={participants} onToggle={toggle} meId={meId} />
                 <div className="flex justify-end gap-2 pt-2">
                     <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
-                    <Btn type="submit" disabled={loading}>{loading ? "Saving…" : "Save event"}</Btn>
+                    <Btn type="submit" disabled={loading || participants.length === 0}>{loading ? "Saving…" : "Save event"}</Btn>
                 </div>
             </form>
         </Modal>
@@ -348,7 +381,13 @@ function TransactionFormModal({
     const [name, setName] = useState(initial?.name ?? "");
     const [desc, setDesc] = useState(initial?.description ?? "");
     const [shop, setShop] = useState(initial?.shop_name ?? "");
-    const [eventId, setEventId] = useState<number | "">(initial?.event_id ?? (events[0]?.id ?? ""));
+    const [eventId, setEventId] = useState<number | "">(
+        initial ? (events.find(e => e.transactions.some(t => t.id === initial.id))?.id ?? "") : (events[0]?.id ?? "")
+    );
+    const event = events.find(e => e.id === eventId);
+    const eventUsers = event
+        ? allUsers.filter(u => u.id === event.owner_id || event.participants.some(p => p.id === u.id))
+        : [];
     const [participants, setParticipants] = useState<number[]>(
         initial ? initial.participants.map(p => p.id) : [currentUserId]
     );
@@ -383,7 +422,7 @@ function TransactionFormModal({
                 name,
                 description: desc || undefined,
                 shop_name: shop,
-                event_id: eventId || undefined,
+                event_id: eventId,
                 owner_id: currentUserId,
                 participants,
                 items: items.filter(i => i.name).map(i => ({ name: i.name, price: parseFloat(i.price) || 0 })),
@@ -411,9 +450,14 @@ function TransactionFormModal({
                         <select
                             className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                             value={eventId}
-                            onChange={e => setEventId(Number(e.target.value))}
+                            required
+                            disabled={!!initial}
+                            onChange={e => {
+                                setEventId(Number(e.target.value));
+                                setParticipants([currentUserId]);
+                            }}
                         >
-                            <option value="">— no event —</option>
+                            {!events.length && <option value="">Create an event first</option>}
                             {events.map(ev => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
                         </select>
                     </label>
@@ -471,33 +515,11 @@ function TransactionFormModal({
                     )}
                 </div>
 
-                {/* Participants */}
-                <div>
-                    <span className="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-2">Participants</span>
-                    <div className="flex flex-wrap gap-2">
-                        {allUsers.map(u => (
-                            <button
-                                key={u.id}
-                                type="button"
-                                onClick={() => toggleParticipant(u.id)}
-                                className={`px-3 py-1.5 rounded-full text-sm border transition-all ${participants.includes(u.id)
-                                    ? "bg-indigo-600 text-white border-indigo-600"
-                                    : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300"
-                                    }`}
-                            >
-                                {u.name}
-                                {u.id === currentUserId && " (you)"}
-                            </button>
-                        ))}
-                    </div>
-                    {participants.length === 0 && (
-                        <p className="text-xs text-red-500 mt-1">Select at least one participant.</p>
-                    )}
-                </div>
+                <ParticipantPicker users={eventUsers} selected={participants} onToggle={toggleParticipant} meId={currentUserId} />
 
                 <div className="flex justify-end gap-2 pt-2">
                     <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
-                    <Btn type="submit" disabled={loading || participants.length === 0}>
+                    <Btn type="submit" disabled={loading || participants.length === 0 || eventId === ""}>
                         {loading ? "Saving…" : "Save transaction"}
                     </Btn>
                 </div>
@@ -530,13 +552,13 @@ function EventsView({ me, allUsers }: { me: User; allUsers: User[] }) {
 
     useEffect(() => { load(); }, [load]);
 
-    async function createEvent(name: string, description: string) {
-        await api("/events", { method: "POST", body: JSON.stringify({ name, description }) });
+    async function createEvent(name: string, description: string, participants: number[]) {
+        await api("/events", { method: "POST", body: JSON.stringify({ name, description, participants }) });
         await load();
     }
 
-    async function editEvent(event: Event, name: string, description: string) {
-        await api(`/events/${event.id}`, { method: "PUT", body: JSON.stringify({ name, description }) });
+    async function editEvent(event: Event, name: string, description: string, participants: number[]) {
+        await api(`/events/${event.id}`, { method: "PUT", body: JSON.stringify({ name, description, participants }) });
         await load();
     }
 
@@ -594,6 +616,9 @@ function EventsView({ me, allUsers }: { me: User; allUsers: User[] }) {
                                                 <Btn size="sm" variant="outline" onClick={() => setEditing(ev)}>Edit</Btn>
                                                 <Btn size="sm" variant="danger" onClick={() => deleteEvent(ev.id)}>Delete</Btn>
                                             </div>
+                                            <p className="text-xs text-slate-500 mb-3">
+                                                With: {ev.participants.map(p => p.name).join(", ") || "—"}
+                                            </p>
                                             {ev.transactions.length === 0 ? (
                                                 <p className="text-sm text-slate-400">No transactions in this event.</p>
                                             ) : (
@@ -619,12 +644,14 @@ function EventsView({ me, allUsers }: { me: User; allUsers: User[] }) {
             )}
 
             {showForm && (
-                <EventFormModal onSave={createEvent} onClose={() => setShowForm(false)} />
+                <EventFormModal allUsers={allUsers} meId={me.id} onSave={createEvent} onClose={() => setShowForm(false)} />
             )}
             {editing && (
                 <EventFormModal
                     initial={editing}
-                    onSave={(n, d) => editEvent(editing, n, d)}
+                    allUsers={allUsers}
+                    meId={me.id}
+                    onSave={(n, d, p) => editEvent(editing, n, d, p)}
                     onClose={() => setEditing(null)}
                 />
             )}
@@ -699,7 +726,7 @@ function TransactionsView({ me, allUsers }: { me: User; allUsers: User[] }) {
                         {txns.map(t => {
                             const total = totalOf(t);
                             const per = perPersonOf(t);
-                            const ev = events.find(e => e.id === t.event_id);
+                            const ev = events.find(e => e.transactions.some(x => x.id === t.id));
                             return (
                                 <div key={t.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
                                     <div className="flex items-start justify-between gap-4">
@@ -765,58 +792,57 @@ function TransactionsView({ me, allUsers }: { me: User; allUsers: User[] }) {
 // ─── Balances view ────────────────────────────────────────────────────────────
 
 function BalancesView({ me, allUsers }: { me: User; allUsers: User[] }) {
-    const [txns, setTxns] = useState<Transaction[]>([]);
+    const [events, setEvents] = useState<Event[]>([]);
+    const [eventId, setEventId] = useState<number | null>(null);
+    const [data, setData] = useState<EventSettlements | null>(null);
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState("");
 
     useEffect(() => {
-        api<Transaction[]>("/transactions")
-            .then(setTxns)
+        api<Event[]>("/events")
+            .then(evs => { setEvents(evs); setEventId(evs[0]?.id ?? null); })
             .catch(e => setErr(e.message))
             .finally(() => setLoading(false));
     }, []);
 
-    if (loading) return <Spinner />;
+    useEffect(() => {
+        if (eventId === null) return;
+        setData(null);
+        api<EventSettlements>(`/events/${eventId}/settlements`)
+            .then(setData)
+            .catch(e => setErr(e.message));
+    }, [eventId]);
 
-    const net = computeBalances(txns, allUsers);
-
-    // Generate settlement suggestions
-    const debtors = Object.entries(net)
-        .filter(([, v]) => v < -0.005)
-        .map(([id, v]) => ({ id: Number(id), amount: -v }))
-        .sort((a, b) => b.amount - a.amount);
-
-    const creditors = Object.entries(net)
-        .filter(([, v]) => v > 0.005)
-        .map(([id, v]) => ({ id: Number(id), amount: v }))
-        .sort((a, b) => b.amount - a.amount);
-
-    // Simple greedy settlement
-    const settlements: { from: number; to: number; amount: number }[] = [];
-    const d = debtors.map(x => ({ ...x }));
-    const c = creditors.map(x => ({ ...x }));
-    let di = 0, ci = 0;
-    while (di < d.length && ci < c.length) {
-        const pay = Math.min(d[di].amount, c[ci].amount);
-        settlements.push({ from: d[di].id, to: c[ci].id, amount: pay });
-        d[di].amount -= pay;
-        c[ci].amount -= pay;
-        if (d[di].amount < 0.005) di++;
-        if (c[ci].amount < 0.005) ci++;
-    }
-
-    const usersWithBalance = allUsers.filter(u => Math.abs(net[u.id] ?? 0) > 0.005);
+    const money = (minor: number) => (minor / 100).toFixed(2);
+    const nonZero = data?.balances.filter(b => b.balance_minor !== 0) ?? [];
 
     return (
         <div className="max-w-2xl mx-auto">
-            <div className="mb-6">
-                <h2 className="text-xl font-bold text-slate-900">Balances</h2>
-                <p className="text-sm text-slate-500 mt-0.5">Who paid and who still owes</p>
+            <div className="flex items-center justify-between mb-6 gap-4">
+                <div>
+                    <h2 className="text-xl font-bold text-slate-900">Balances</h2>
+                    <p className="text-sm text-slate-500 mt-0.5">Who paid and who still owes</p>
+                </div>
+                {events.length > 0 && (
+                    <select
+                        className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+                        value={eventId ?? ""}
+                        onChange={e => setEventId(Number(e.target.value))}
+                    >
+                        {events.map(ev => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
+                    </select>
+                )}
             </div>
 
             {err && <ErrorBox msg={err} onClose={() => setErr("")} />}
 
-            {usersWithBalance.length === 0 ? (
+            {loading ? <Spinner /> : events.length === 0 ? (
+                <div className="text-center py-16 text-slate-400">
+                    <div className="text-5xl mb-3">🗓</div>
+                    <p className="font-medium">No events yet</p>
+                    <p className="text-sm mt-1">Create an event and add transactions to see balances</p>
+                </div>
+            ) : !data ? <Spinner /> : nonZero.length === 0 ? (
                 <div className="text-center py-16 text-slate-400">
                     <div className="text-5xl mb-3">✅</div>
                     <p className="font-medium">All settled up!</p>
@@ -825,40 +851,36 @@ function BalancesView({ me, allUsers }: { me: User; allUsers: User[] }) {
             ) : (
                 <>
                     <div className="bg-white rounded-xl border border-slate-100 shadow-sm divide-y divide-slate-100 mb-6">
-                        {usersWithBalance.map(u => {
-                            const bal = net[u.id] ?? 0;
+                        {nonZero.map(b => {
+                            const name = userName(b.user_id, allUsers);
                             return (
-                                <div key={u.id} className="flex items-center justify-between px-5 py-3">
+                                <div key={b.user_id} className="flex items-center justify-between px-5 py-3">
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold ${u.id === me.id ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"
-                                            }`}>
-                                            {u.name[0].toUpperCase()}
+                                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold ${b.user_id === me.id ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
+                                            {name[0].toUpperCase()}
                                         </div>
-                                        <div>
-                                            <div className="font-medium text-slate-900">{u.name}{u.id === me.id ? " (you)" : ""}</div>
-                                            {u.account_number && <div className="text-xs text-slate-400">{u.account_number}</div>}
-                                        </div>
+                                        <div className="font-medium text-slate-900">{name}{b.user_id === me.id ? " (you)" : ""}</div>
                                     </div>
-                                    <div className={`font-bold text-sm ${bal > 0 ? "text-emerald-600" : "text-red-500"}`}>
-                                        {bal > 0 ? "+" : ""}{bal.toFixed(2)}
+                                    <div className={`font-bold text-sm ${b.balance_minor > 0 ? "text-emerald-600" : "text-red-500"}`}>
+                                        {b.balance_minor > 0 ? "+" : ""}{money(b.balance_minor)}
                                     </div>
                                 </div>
                             );
                         })}
                     </div>
 
-                    {settlements.length > 0 && (
+                    {data.settlements.length > 0 && (
                         <div>
                             <h3 className="text-sm font-semibold text-slate-700 mb-3">Suggested settlements</h3>
                             <div className="flex flex-col gap-2">
-                                {settlements.map((s, i) => (
+                                {data.settlements.map((s, i) => (
                                     <div key={i} className="bg-amber-50 border border-amber-100 rounded-xl px-5 py-3 flex items-center justify-between">
                                         <div className="text-sm text-slate-700">
-                                            <span className="font-semibold text-red-600">{userName(s.from, allUsers)}</span>
+                                            <span className="font-semibold text-red-600">{userName(s.from_user_id, allUsers)}</span>
                                             <span className="text-slate-400 mx-2">→</span>
-                                            <span className="font-semibold text-emerald-600">{userName(s.to, allUsers)}</span>
+                                            <span className="font-semibold text-emerald-600">{userName(s.to_user_id, allUsers)}</span>
                                         </div>
-                                        <Badge color="amber">{s.amount.toFixed(2)}</Badge>
+                                        <Badge color="amber">{money(s.amount_minor)}</Badge>
                                     </div>
                                 ))}
                             </div>
@@ -944,7 +966,7 @@ export default function App() {
         api<User>("/me")
             .then(user => {
                 setMe(user);
-                return api<User[]>("/admin/users").catch(() => [user]);
+                return api<User[]>("/users").catch(() => [user]);
             })
             .then(users => setAllUsers(users))
             .catch(() => { })
@@ -954,12 +976,14 @@ export default function App() {
     async function handleLogin(user: User) {
         setMe(user);
         // Try to load all users for participant selection; fall back to just self
-        const users = await api<User[]>("/admin/users").catch(() => [user]);
+        const users = await api<User[]>("/users").catch(() => [user]);
         setAllUsers(users);
         setView("events");
     }
 
     function handleLogout() {
+        // The Session cookie is not HttpOnly and the API has no logout route, so expire it here.
+        document.cookie = "Session=; Max-Age=0; path=/";
         setMe(null);
         setAllUsers([]);
         setAuthView("login");
@@ -1004,12 +1028,16 @@ export default function App() {
                             </button>
                         ))}
                     </nav>
-                    <button
-                        onClick={() => setShowProfile(true)}
-                        className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm flex items-center justify-center hover:bg-indigo-200 transition-colors"
-                    >
-                        {me.name[0].toUpperCase()}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowProfile(true)}
+                            className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm flex items-center justify-center hover:bg-indigo-200 transition-colors"
+                            title="Profile"
+                        >
+                            {me.name[0].toUpperCase()}
+                        </button>
+                        <Btn variant="ghost" size="sm" onClick={handleLogout}>Log out</Btn>
+                    </div>
                 </div>
             </header>
 

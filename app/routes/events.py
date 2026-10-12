@@ -226,7 +226,7 @@ def edit_event(request: Request, event_id: int, edited: EventEdit, db: DbSession
 
         if edited.participants is not None:
             event.participants = (
-                db.query(UserModel).filter(EventModel.id.in_(edited.participants)).all()
+                db.query(UserModel).filter(UserModel.id.in_(edited.participants)).all()
             )
 
         db.commit()

@@ -15,6 +15,7 @@ from app.schemas import (
     UserCreate,
     UserEdit,
     UserLogin,
+    UserPublic,
 )
 from app.session import load_session, make_session
 
@@ -211,6 +212,25 @@ def login(me: UserLogin, db: DbSession):
 
     except Exception:
         logger.exception("Failed to log in user: %s.", me.name)
+        raise
+
+    finally:
+        db.close()
+
+
+@router.get("/users")
+def list_users(request: Request, db: DbSession):
+    jw_token = request.cookies.get("Session")
+    user_id = load_session(jw_token)
+
+    try:
+        users_db = db.query(UserModel).order_by(UserModel.name).all()
+
+        logger.info("User %s retrieved the user list.", user_id)
+        return [UserPublic.load_from_db(user) for user in users_db]
+
+    except Exception:
+        logger.exception("Failed to list users for User %s.", user_id)
         raise
 
     finally:
