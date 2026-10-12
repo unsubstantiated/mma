@@ -17,16 +17,16 @@ def make_session(user_id):
         created_at=datetime.now(ZoneInfo("Europe/Budapest")),
         expires_at=datetime.now(ZoneInfo("Europe/Budapest")) + EXPIRY,
     )
-    jew_token = jwt.encode(
+    jw_token = jwt.encode(
         session.model_dump(mode="json"), settings.jwt_secret, algorithm="HS256"
     )
 
-    return jew_token
+    return jw_token
 
 
-def load_session(jew_token):
+def load_session(jw_token):
     try:
-        decoded = jwt.decode(jew_token, settings.jwt_secret, algorithms=["HS256"])
+        decoded = jwt.decode(jw_token, settings.jwt_secret, algorithms=["HS256"])
 
         session = Session.model_validate(decoded)
 

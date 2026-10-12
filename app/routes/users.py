@@ -200,10 +200,10 @@ def login(me: UserLogin, db: DbSession):
 
         user = User.load_from_db(user_db)
 
-        jew_token = make_session(user.id)
+        jw_token = make_session(user.id)
 
         response = JSONResponse(user.model_dump(), 200)
-        response.set_cookie("Session", jew_token)
+        response.set_cookie("Session", jw_token)
 
         logger.info("User %s logged in.", user.id)
 
@@ -219,8 +219,8 @@ def login(me: UserLogin, db: DbSession):
 
 @router.get("/me")
 def get_me(request: Request, db: DbSession):
-    jew_token = request.cookies.get("Session")
-    user_id = load_session(jew_token)
+    jw_token = request.cookies.get("Session")
+    user_id = load_session(jw_token)
 
     try:
         user_db = db.query(UserModel).filter(UserModel.id == user_id).first()
@@ -239,8 +239,8 @@ def get_me(request: Request, db: DbSession):
 
 @router.delete("/me")
 def delete_me(request: Request, db: DbSession):
-    jew_token = request.cookies.get("Session")
-    user_id = load_session(jew_token)
+    jw_token = request.cookies.get("Session")
+    user_id = load_session(jw_token)
 
     try:
         user_db = db.query(UserModel).filter(UserModel.id == user_id).first()
@@ -261,8 +261,8 @@ def delete_me(request: Request, db: DbSession):
 
 @router.put("/me")
 def edit_me(request: Request, edited: UserEdit, db: DbSession):
-    jew_token = request.cookies.get("Session")
-    user_id = load_session(jew_token)
+    jw_token = request.cookies.get("Session")
+    user_id = load_session(jw_token)
 
     try:
         user_db = db.query(UserModel).filter(UserModel.id == user_id).first()
