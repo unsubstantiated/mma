@@ -1,11 +1,19 @@
-from sqlalchemy import Column, Integer, Float, String, ForeignKey, Table
+from sqlalchemy import Column, Float, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import relationship
+
 from app.database import Base
 
 transaction_participants = Table(
     "transaction_participants",
     Base.metadata,
     Column("transaction_id", ForeignKey("transactions.id"), primary_key=True),
+    Column("user_id", ForeignKey("users.id"), primary_key=True),
+)
+
+event_participants = Table(
+    "event_participants",
+    Base.metadata,
+    Column("event_id", ForeignKey("events.id"), primary_key=True),
     Column("user_id", ForeignKey("users.id"), primary_key=True),
 )
 
@@ -30,13 +38,14 @@ class TransactionModel(Base):
     shop_name = Column(String, nullable=False)
 
     owner_id = Column(Integer, ForeignKey("users.id"))
+    event_id = Column(Integer, ForeignKey("events.id"))
 
     participants = relationship(
         "UserModel",
         secondary=transaction_participants,
     )
 
-    items = relationship("ItemModel", back_populates="parent_transaction_id")
+    items = relationship("ItemModel")
 
 
 class ItemModel(Base):
@@ -45,8 +54,7 @@ class ItemModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     price = Column(Float, nullable=False)
-    parent_transaction_id = relationship(
-        "TransactionModel", back_populates="items")
+    parent_transaction_id = Column(Integer, ForeignKey("transactions.id"))
 
 
 class EventModel(Base):
@@ -58,3 +66,7 @@ class EventModel(Base):
 
     transactions = relationship("TransactionModel")
     owner_id = Column(Integer, ForeignKey("users.id"))
+    participants = relationship(
+        "UserModel",
+        secondary=event_participants,
+    )

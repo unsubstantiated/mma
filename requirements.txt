@@ -1,0 +1,8 @@
+uvicorn
+fastapi
+sqlalchemy
+psycopg2-binary
+PyJWT
+itsdangerous
+alembic
+pydantic-settings

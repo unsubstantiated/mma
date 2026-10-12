@@ -1,7 +1,9 @@
-from fastapi import HTTPException, Request
-from app.session import load_session
-from app.models import UserModel
 import logging
+
+from fastapi import HTTPException, Request
+
+from app.models import UserModel
+from app.session import load_session
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +22,9 @@ def admin_required(db, request: Request):
         logger.warning("Access denied: invalid jew-token.")
         raise HTTPException(status_code=401, detail="Invalid session")
 
-    role = db.query(UserModel.role).filter(
-        UserModel.id == is_admin_id).scalar()
+    role = db.query(UserModel.role).filter(UserModel.id == is_admin_id).scalar()
 
-    if role != "admin":
+    if role != "jew":
         logger.warning("Access denied: user %s is not an admin.", is_admin_id)
         raise HTTPException(status_code=403, detail="Admin access required")
 

@@ -1,7 +1,9 @@
 from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel
-from typing import Optional, Literal
-from app.models import UserModel, ItemModel, TransactionModel, EventModel
+
+from app.models import EventModel, ItemModel, TransactionModel, UserModel
 
 
 class Session(BaseModel):
@@ -12,14 +14,28 @@ class Session(BaseModel):
 
 class UserCreate(BaseModel):
     name: str
-    account_number: Optional[str] = None
+    account_number: str | None = None
     pin_code: str
 
 
 class UserEdit(BaseModel):
-    name: Optional[str] = None
-    account_number: Optional[str] = None
-    pin_code: Optional[str] = None
+    name: str | None = None
+    account_number: str | None = None
+    pin_code: str | None = None
+
+
+class AdminUserCreate(BaseModel):
+    name: str
+    account_number: str | None = None
+    pin_code: str | None = None
+    role: Literal["slave", "woman", "member", "jew"] = "member"
+
+
+class AdminUserEdit(BaseModel):
+    name: str | None = None
+    account_number: str | None = None
+    pin_code: str | None = None
+    role: Literal["slave", "woman", "member", "jew"] = "member"
 
 
 class UserLogin(BaseModel):
@@ -33,23 +49,39 @@ class ItemAdd(BaseModel):
 
 
 class ItemEdit(BaseModel):
-    name: Optional[str] = None
-    price: Optional[float] = None
+    name: str | None = None
+    price: float | None = None
 
 
 class EventCreate(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: str | None = None
+    participants: list[int]
 
 
 class EventEdit(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    participants: list[int]
+
+
+class AdminEventCreate(BaseModel):
+    event_name: str
+    event_description: str | None = None
+    owner_id: int
+    participants: list[int]
+
+
+class AdminEventEdit(BaseModel):
+    event_name: str | None
+    event_description: str | None
+    event_id: int
+    participants: list[int] | None
 
 
 class TransactionAdd(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     shop_name: str
     event_id: int
     owner_id: int
@@ -58,23 +90,30 @@ class TransactionAdd(BaseModel):
 
 
 class TransactionEdit(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    shop_name: Optional[str] = None
-    participants: Optional[list[int]] = None
+    name: str | None = None
+    description: str | None = None
+    shop_name: str | None = None
+    participants: list[int] | None = None
+    items: list[ItemEdit] | None = None
 
 
 class User(BaseModel):
     id: int
     name: str
     account_number: str
-    role: Literal["slave", "woman", "member", "jew"]
+    role: Literal["slave", "woman", "member", "jew"] = "member"
 
     pin_code: str
 
     @classmethod
     def load_from_db(cls, line: UserModel):
-        return cls(id=line.id, name=line.name, account_number=line.account_number, role=line.role, pin_code=line.pin_code)
+        return cls(
+            id=line.id,
+            name=line.name,
+            account_number=line.account_number,
+            role=line.role,
+            pin_code=line.pin_code,
+        )
 
 
 class Item(BaseModel):
@@ -90,7 +129,7 @@ class Item(BaseModel):
 class Transaction(BaseModel):
     id: int
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     shop_name: str
 
     owner_id: int
@@ -99,7 +138,15 @@ class Transaction(BaseModel):
 
     @classmethod
     def load_from_db(cls, line: TransactionModel):
-        return cls(id=line.id, name=line.name, description=line.description, shop_name=line.shop_name, owner_id=line.owner_id, participants=line.participants, items=line.items)
+        return cls(
+            id=line.id,
+            name=line.name,
+            description=line.description,
+            shop_name=line.shop_name,
+            owner_id=line.owner_id,
+            participants=[User.load_from_db(user) for user in line.participants],
+            items=[Item.load_from_db(item) for item in line.items],
+        )
 
 
 class Event(BaseModel):
@@ -111,4 +158,13 @@ class Event(BaseModel):
 
     @classmethod
     def load_from_db(cls, line: EventModel):
-        return cls(id=line.id, name=line.name, description=line.description, transactions=line.transactions, owner_id=line.owner_id)
+        return cls(
+            id=line.id,
+            name=line.name,
+            description=line.description,
+            transactions=[
+                Transaction.load_from_db(transaction)
+                for transaction in line.transactions
+            ],
+            owner_id=line.owner_id,
+        )
