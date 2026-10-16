@@ -4,11 +4,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.helpers import admin_required
-from app.models import EventModel, UserModel
+from app.models import EventModel, UserModel, event_participants
 from app.schemas import AdminEventCreate, AdminEventEdit, Event, EventCreate, EventEdit
 from app.session import load_session
 
@@ -44,7 +45,8 @@ def admin_create_event(request: Request, event: AdminEventCreate, db: DbSession)
 
     try:
         participants = (
-            db.query(UserModel).filter(UserModel.id.in_(event.participants)).all()
+            db.query(UserModel).filter(
+                UserModel.id.in_(event.participants)).all()
         )
 
         new_event = EventModel(
@@ -76,7 +78,8 @@ def admin_edit_event(request: Request, edited: AdminEventEdit, db: DbSession):
     admin_id = admin_required(db, request)
 
     try:
-        event = db.query(EventModel).filter(EventModel.id == edited.event_id).first()
+        event = db.query(EventModel).filter(
+            EventModel.id == edited.event_id).first()
 
         if not event:
             logger.warning(
@@ -94,7 +97,8 @@ def admin_edit_event(request: Request, edited: AdminEventEdit, db: DbSession):
 
         if edited.participants is not None:
             event.participants = (
-                db.query(UserModel).filter(UserModel.id.in_(edited.participants)).all()
+                db.query(UserModel).filter(
+                    UserModel.id.in_(edited.participants)).all()
             )
 
         db.commit()
@@ -152,7 +156,14 @@ def get_my_events(request: Request, db: DbSession):
     user_id = load_session(jw_token)
 
     try:
-        events_db = db.query(EventModel).filter(EventModel.owner_id == user_id).all()
+        stmt = (
+            select(EventModel)
+            .join(event_participants, event_participants.c.event_id == EventModel.id)
+            .where(event_participants.c.user_id == user_id)
+        )
+
+        events_db = db.scalars(stmt).all()
+
         events = [Event.load_from_db(event) for event in events_db]
 
         logger.info("User %s retrieved their Events.", user_id)
@@ -174,7 +185,9 @@ def create_event(request: Request, event: EventCreate, db: DbSession):
 
     try:
         participants = (
-            db.query(UserModel).filter(UserModel.id.in_(event.participants)).all()
+            db.query(UserModel).filter(
+                UserModel.id.in_(event.participants)
+            ).all()
         )
 
         new_event = EventModel(
@@ -226,7 +239,8 @@ def edit_event(request: Request, event_id: int, edited: EventEdit, db: DbSession
 
         if edited.participants is not None:
             event.participants = (
-                db.query(UserModel).filter(UserModel.id.in_(edited.participants)).all()
+                db.query(UserModel).filter(
+                    UserModel.id.in_(edited.participants)).all()
             )
 
         db.commit()
@@ -270,7 +284,8 @@ def delete_event(request: Request, event_id: int, db: DbSession):
 
     except Exception:
         db.rollback()
-        logger.exception("User %s failed to delete Event %d.", user_id, event_id)
+        logger.exception("User %s failed to delete Event %d.",
+                         user_id, event_id)
         raise
 
     finally:
